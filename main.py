@@ -90,18 +90,30 @@ STRICT RULES:
 8. tts_input must spell out numbers and currencies naturally for speech. e.g., 500 -> "paanch sau rupaye" if SOURCE_LANG is hi.
 """
 
-@app.post("/api/stt")
-async def speech_to_text(audio: UploadFile = File(...)):
+@app.post("/api/tts")
+def text_to_speech(payload: TTSRequest):
+    """
+    Free TTS using gTTS. Zero API keys or billing required.
+    """
     try:
-        audio_bytes = await audio.read()
-        transcription = await groq_client.audio.transcriptions.create(
-            model="whisper-large-v3",
-            file=(audio.filename, audio_bytes, audio.content_type),
-            response_format="verbose_json" 
-        )
-        return {"transcript": transcription.text, "detected_language": transcription.language}
+        from gtts import gTTS
+        import io
+        
+        # gTTS uses 2-letter codes (e.g., 'hi' instead of 'hi-IN')
+        lang_code = payload.lang.split('-')[0] if '-' in payload.lang else payload.lang
+        
+        # Generate audio directly into memory (no saving to disk)
+        tts = gTTS(text=payload.text, lang=lang_code)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        
+        # Convert raw bytes to Base64 for the frontend
+        audio_b64_string = base64.b64encode(fp.getvalue()).decode('utf-8')
+        
+        return {"audio_b64": audio_b64_string}
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"audio_b64": None, "fallback": True, "error": str(e)}
 
 @app.post("/api/pipeline")
 async def run_pipeline(payload: PipelineRequest):
